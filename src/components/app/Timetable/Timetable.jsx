@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 import {
     addDays,
@@ -376,8 +377,11 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
     const [showSaturday, setShowSaturday] = useState(() => localStorage.getItem("edp-timetable-saturday") !== "false");
     const [showSunday, setShowSunday] = useState(() => localStorage.getItem("edp-timetable-sunday") === "true");
     const [printOptionsOpen, setPrintOptionsOpen] = useState(false);
-    const [printHomework, setPrintHomework] = useState(false);
+    const [isPrinting, setIsPrinting] = useState(false);
+    const [printHomework, setPrintHomework] = useState(true);
     const [printCancelled, setPrintCancelled] = useState(true);
+    const [printSaturday, setPrintSaturday] = useState(showSaturday);
+    const [printSunday, setPrintSunday] = useState(showSunday);
     const [courses, setCourses] = useState([]);
     const [selectedCourse, setSelectedCourse] = useState(null);
     const [coursework, setCoursework] = useState(IDLE_COURSEWORK);
@@ -403,12 +407,17 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
         () => Array.from({ length: WEEK_DAYS }, (_, index) => addDays(selectorWeekStart, index)),
         [selectorWeekStart],
     );
-    const visibleDays = useMemo(
+    const screenDays = useMemo(
         () => viewMode === "three-day"
             ? Array.from({ length: THREE_DAY_WINDOW }, (_, index) => addDays(periodStart, index))
             : selectorDays.filter((day) => (day.getDay() !== 6 || showSaturday) && (day.getDay() !== 0 || showSunday)),
         [periodStart, selectorDays, showSaturday, showSunday, viewMode],
     );
+    const visibleDays = useMemo(() => {
+        if (!isPrinting) return screenDays;
+        const days = viewMode === "week" ? selectorDays : screenDays;
+        return days.filter((day) => (day.getDay() !== 6 || printSaturday) && (day.getDay() !== 0 || printSunday));
+    }, [isPrinting, printSaturday, printSunday, screenDays, selectorDays, viewMode]);
     const fetchStart = useMemo(() => startOfWeek(periodStart, { weekStartsOn: 1 }), [periodStart]);
     const fetchEnd = useMemo(() => (
         addDays(startOfWeek(periodEnd, { weekStartsOn: 1 }), WEEK_DAYS - 1)
@@ -419,8 +428,8 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
         [courses, visibleDays],
     );
     const displayedCourses = useMemo(
-        () => periodCourses.filter((course) => showCancelled || !course.isCancelled),
-        [periodCourses, showCancelled],
+        () => periodCourses.filter((course) => (isPrinting ? printCancelled : showCancelled) || !course.isCancelled),
+        [isPrinting, periodCourses, printCancelled, showCancelled],
     );
     const gridRange = useMemo(() => getGridRange(displayedCourses), [displayedCourses]);
     const gridHeight = ((gridRange.end - gridRange.start) / 60) * HOUR_HEIGHT;
@@ -464,6 +473,12 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
         localStorage.setItem("edp-timetable-saturday", String(showSaturday));
         localStorage.setItem("edp-timetable-sunday", String(showSunday));
     }, [showSaturday, showSunday]);
+
+    useEffect(() => {
+        const finishPrinting = () => setIsPrinting(false);
+        window.addEventListener("afterprint", finishPrinting);
+        return () => window.removeEventListener("afterprint", finishPrinting);
+    }, []);
 
     useEffect(() => {
         // if (!isLoggedIn || typeof fetchTimetableRef.current !== "function") {
@@ -548,9 +563,20 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
         setRefreshRequest((value) => value + 1);
     };
 
+    const openPrintOptions = () => {
+        setPrintHomework(true);
+        setPrintCancelled(showCancelled);
+        setPrintSaturday(screenDays.some((day) => day.getDay() === 6));
+        setPrintSunday(screenDays.some((day) => day.getDay() === 0));
+        setPrintOptionsOpen(true);
+    };
+
     const printTimetable = () => {
         setPrintOptionsOpen(false);
-        window.setTimeout(() => window.print(), 350);
+        window.setTimeout(() => {
+            flushSync(() => setIsPrinting(true));
+            window.print();
+        }, 350);
     };
 
     const openCourse = (course, force = false) => {
@@ -670,13 +696,13 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
                                                 <span aria-hidden="true" />
                                                 <span className="cancelled-toggle-label">Cours annulés</span>
                                             </label>
-                                            {viewMode === "week" && <div className="timetable-weekend-settings" aria-label="Jours du week-end">
-                                                <label><input type="checkbox" checked={showSaturday} onChange={(event) => setShowSaturday(event.target.checked)} /> Samedi</label>
-                                                <label><input type="checkbox" checked={showSunday} onChange={(event) => setShowSunday(event.target.checked)} /> Dimanche</label>
+                                            {viewMode === "week" && <div className="timetable-weekend-settings" role="group" aria-label="Jours du week-end">
+                                                <button type="button" className={showSaturday ? "selected" : ""} aria-label="Afficher le samedi" aria-pressed={showSaturday} title="Samedi" onClick={() => setShowSaturday((value) => !value)}>S</button>
+                                                <button type="button" className={showSunday ? "selected" : ""} aria-label="Afficher le dimanche" aria-pressed={showSunday} title="Dimanche" onClick={() => setShowSunday((value) => !value)}>D</button>
                                             </div>}
                                             <div className="timetable-output-actions">
                                                 <button type="button" onClick={() => exportCalendar(displayedCourses, periodStart)}>Exporter .ics</button>
-                                                <button type="button" onClick={() => setPrintOptionsOpen(true)}>Imprimer</button>
+                                                <button type="button" onClick={openPrintOptions}>Imprimer</button>
                                                 <button type="button" className="timetable-action-button" onClick={refresh} disabled={refreshing}>{refreshing ? "Actualisation…" : "Actualiser"}</button>
                                             </div>
                                         </div>
@@ -769,9 +795,11 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
 
             {printOptionsOpen && <PopUp className="timetable-print-popup" onClose={() => setPrintOptionsOpen(false)}>
                 <h2>Imprimer l'emploi du temps</h2>
-                <p>La vue actuellement affichée sera imprimée.</p>
+                <p>Choisissez ce qui apparaîtra sur la version imprimée.</p>
                 <label><input type="checkbox" checked={printHomework} onChange={(event) => setPrintHomework(event.target.checked)} /> Afficher les crayons des devoirs</label>
-                <label><input type="checkbox" checked={printCancelled && showCancelled} disabled={!showCancelled} onChange={(event) => setPrintCancelled(event.target.checked)} /> Afficher les cours annulés{!showCancelled ? " (masqués dans la vue)" : ""}</label>
+                <label><input type="checkbox" checked={printCancelled} onChange={(event) => setPrintCancelled(event.target.checked)} /> Afficher les cours annulés</label>
+                <label><input type="checkbox" checked={printSaturday} disabled={viewMode === "three-day" && !screenDays.some((day) => day.getDay() === 6)} onChange={(event) => setPrintSaturday(event.target.checked)} /> Samedi</label>
+                <label><input type="checkbox" checked={printSunday} disabled={viewMode === "three-day" && !screenDays.some((day) => day.getDay() === 0)} onChange={(event) => setPrintSunday(event.target.checked)} /> Dimanche</label>
                 <div className="timetable-print-actions">
                     <button type="button" onClick={() => setPrintOptionsOpen(false)}>Annuler</button>
                     <button type="button" onClick={printTimetable}>Imprimer</button>

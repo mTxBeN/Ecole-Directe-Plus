@@ -740,18 +740,30 @@
 }
 
 .timetable-weekend-settings {
-    display: flex;
-    gap: 7px;
-    color: rgb(var(--text-color-alt));
+    display: inline-flex;
+    overflow: hidden;
+    border: 1px solid rgba(var(--border-color-contrast), .5);
+    border-radius: 9px;
     font-size: var(--font-size-12);
 }
 
-.timetable-weekend-settings label {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    white-space: nowrap;
+.timetable-weekend-settings button {
+    min-width: 30px;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: rgb(var(--text-color-alt));
     cursor: pointer;
+}
+
+.timetable-weekend-settings button + button {
+    border-left: 1px solid rgba(var(--border-color-contrast), .5);
+}
+
+.timetable-weekend-settings button[aria-pressed="true"] {
+    background: rgb(var(--border-color-0));
+    color: rgb(var(--text-color-main-reverse));
 }
 
 .timetable-print-popup #pop-up-background {
