@@ -838,6 +838,8 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
 
 export function DashboardTimetable({ activeAccount, fetchTimetable, onOpen, isStreamerModeEnabled }) {
     const fetchTimetableRef = useRef(fetchTimetable);
+    const previewGridRef = useRef(null);
+    const [previewHeight, setPreviewHeight] = useState(0);
     const [now, setNow] = useState(new Date());
     const [selectedDay, setSelectedDay] = useState(null);
     const [courses, setCourses] = useState([]);
@@ -847,6 +849,16 @@ export function DashboardTimetable({ activeAccount, fetchTimetable, onOpen, isSt
     const tomorrow = addDays(today, 1);
 
     useEffect(() => { fetchTimetableRef.current = fetchTimetable; }, [fetchTimetable]);
+
+    useEffect(() => {
+        const grid = previewGridRef.current;
+        if (!grid) return;
+        const measure = () => setPreviewHeight(grid.clientHeight);
+        measure();
+        const observer = new ResizeObserver(measure);
+        observer.observe(grid);
+        return () => observer.disconnect();
+    }, [loading, error, selectedDay]);
 
     useEffect(() => {
         const interval = window.setInterval(() => setNow(new Date()), 60_000);
@@ -876,7 +888,7 @@ export function DashboardTimetable({ activeAccount, fetchTimetable, onOpen, isSt
     const day = selectedDay && (isSameDay(selectedDay, today) || isSameDay(selectedDay, tomorrow)) ? selectedDay : autoDay;
     const dayCourses = courses.filter((course) => isSameDay(course.start, day)).sort((a, b) => a.start - b.start);
     const range = getGridRange(dayCourses);
-    const hourHeight = 50;
+    const hourHeight = Math.max(50, previewHeight / ((range.end - range.start) / 60));
     const height = ((range.end - range.start) / 60) * hourHeight;
     const layout = layoutDayCourses(dayCourses);
     const nowMinutes = minutesSinceMidnight(now);
@@ -884,18 +896,17 @@ export function DashboardTimetable({ activeAccount, fetchTimetable, onOpen, isSt
         && todayCourses.some((course) => course.end > now);
 
     return <div className="dashboard-timetable-preview">
-        <div className="dashboard-timetable-controls">
+        <div className="dashboard-timetable-header">
+            <strong className="dashboard-timetable-date">{format(day, "EEEE d MMMM", { locale: fr })}</strong>
             <div className="dashboard-timetable-days" role="group" aria-label="Jour de l'aperçu">
-                <button type="button" className={isSameDay(day, today) ? "selected" : ""} onClick={() => setSelectedDay(today)}>Aujourd'hui</button>
-                <button type="button" className={isSameDay(day, tomorrow) ? "selected" : ""} onClick={() => setSelectedDay(tomorrow)}>Demain</button>
+                <button type="button" className={isSameDay(day, today) ? "selected" : ""} aria-pressed={isSameDay(day, today)} onClick={() => setSelectedDay(today)}>Aujourd'hui</button>
+                <button type="button" className={isSameDay(day, tomorrow) ? "selected" : ""} aria-pressed={isSameDay(day, tomorrow)} onClick={() => setSelectedDay(tomorrow)}>Demain</button>
             </div>
-            <button type="button" className="dashboard-timetable-open" onClick={onOpen}>Ouvrir l'EDT ›</button>
         </div>
-        <strong className="dashboard-timetable-date">{format(day, "EEEE d MMMM", { locale: fr })}</strong>
         {loading ? <p className="dashboard-timetable-message">Chargement des cours…</p>
             : error ? <p className="dashboard-timetable-message" role="alert">{error}</p>
                 : dayCourses.length === 0 ? <p className="dashboard-timetable-message">Aucun cours prévu.</p>
-                    : <div className="dashboard-timetable-scroll">
+                    : <div className="dashboard-timetable-scroll" ref={previewGridRef}>
                         <div className="dashboard-timetable-axis" style={{ height }}>
                             {Array.from({ length: Math.floor((range.end - range.start) / 60) + 1 }, (_, index) => range.start + index * 60)
                                 .filter((minutes) => minutes > range.start && minutes < range.end)

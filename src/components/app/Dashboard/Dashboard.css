@@ -8,47 +8,65 @@
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     height: 100%;
     min-height: 0;
-    padding: 12px;
+    padding: 16px;
     color: rgb(var(--text-color-main));
 }
 
-.dashboard-timetable-controls,
-.dashboard-timetable-days {
+.dashboard-timetable-header {
     display: flex;
     align-items: center;
-    gap: 6px;
-}
-
-.dashboard-timetable-controls {
     justify-content: space-between;
+    gap: 10px;
     flex-wrap: wrap;
 }
 
-.dashboard-timetable-controls button {
-    padding: 6px 9px;
-    border: 1px solid rgba(var(--border-color-contrast), .45);
-    border-radius: 8px;
-    background: rgb(var(--background-color-1));
+.dashboard-timetable-days {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 14px;
+    background: rgba(var(--background-color-0), .55);
+}
+
+.dashboard-timetable-days button {
+    min-height: 32px;
+    padding: 5px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
     color: rgb(var(--text-color-main));
-    font: inherit;
+    font-size: var(--font-size-14);
+    font-weight: var(--font-weight-semi-bold);
     cursor: pointer;
 }
 
-.dashboard-timetable-controls button.selected {
-    background: rgb(var(--text-color-alt));
-    color: rgb(var(--background-color-0));
+.dashboard-timetable-days button:hover,
+.dashboard-timetable-days button:focus-visible {
+    background: rgba(var(--background-color-focus));
+}
+
+.dashboard-timetable-days button.selected {
+    background: rgb(var(--border-color-0));
+    color: rgb(var(--text-color-main-reverse));
+    box-shadow: 0 4px 12px rgba(var(--text-color-main), .14);
+}
+
+.dark .dashboard-timetable-days button.selected {
+    color: white;
 }
 
 .dashboard-timetable-date {
     text-transform: capitalize;
+    font-size: var(--font-size-18);
 }
 
 .dashboard-timetable-scroll {
     display: grid;
-    grid-template-columns: 43px minmax(0, 1fr);
+    grid-template-columns: 50px minmax(0, 1fr);
     min-height: 0;
     flex: 1;
     overflow-y: auto;
