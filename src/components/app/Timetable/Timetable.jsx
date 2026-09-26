@@ -23,6 +23,7 @@ import BottomSheet from "../../generic/PopUps/BottomSheet";
 import EncodedHTMLDiv from "../../generic/CustomDivs/EncodedHTMLDiv";
 import FileComponent from "../../generic/FileComponent";
 import InfoButton from "../../generic/Informative/InfoButton";
+import PopUp from "../../generic/PopUps/PopUp";
 
 import "./Timetable.css";
 import { anonymizeTeacher, textToHSL } from "../../../utils/utils";
@@ -89,6 +90,8 @@ function normalizeCourse(course) {
     const homeworkSummary = Array.isArray(course.homeworkSummary) ? course.homeworkSummary : [];
     const hasHomework = apiBoolean(course.devoirAFaire) || homeworkSummary.length > 0;
     const hasSessionContent = apiBoolean(course.contenuDeSeance);
+    const isInterrogation = apiBoolean(course.homeworkInterrogation)
+        || homeworkSummary.some((homework) => apiBoolean(homework.interrogation));
 
     return {
         ...course,
@@ -107,6 +110,7 @@ function normalizeCourse(course) {
         devoirAFaire: hasHomework,
         contenuDeSeance: hasSessionContent,
         homeworkDone: hasHomework && apiBoolean(course.homeworkDone),
+        homeworkInterrogation: isInterrogation,
         homeworkSummary,
         status: isCancelled
             ? "Cours annulé"
@@ -205,28 +209,55 @@ function exportCalendar(courses, weekStart) {
     URL.revokeObjectURL(url);
 }
 
-function CourseCard({ course, gridStart, gridEnd, onSelect, isStreamerModeEnabled }) {
+function layoutDayCourses(courses) {
+    const sorted = [...courses].sort((a, b) => a.start - b.start || b.end - a.end);
+    const result = new Map();
+    let group = [];
+    let active = [];
+    let columnCount = 0;
+
+    const finishGroup = () => {
+        group.forEach(({ course, column }) => result.set(course.id, { column, count: columnCount }));
+        group = [];
+        columnCount = 0;
+    };
+
+    sorted.forEach((course) => {
+        active = active.filter((entry) => entry.course.end > course.start);
+        if (!active.length && group.length) finishGroup();
+        const used = new Set(active.map((entry) => entry.column));
+        let column = 0;
+        while (used.has(column)) column += 1;
+        group.push({ course, column });
+        active.push({ course, column });
+        columnCount = Math.max(columnCount, active.length, column + 1);
+    });
+    if (group.length) finishGroup();
+    return result;
+}
+
+function CourseCard({ course, gridStart, gridEnd, onSelect, isStreamerModeEnabled, layout = { column: 0, count: 1 }, hourHeight = HOUR_HEIGHT }) {
     const startMinutes = minutesSinceMidnight(course.start);
     const endMinutes = minutesSinceMidnight(course.end);
     const visibleStart = Math.max(startMinutes, gridStart);
     const visibleEnd = Math.min(endMinutes, gridEnd);
     if (visibleStart >= visibleEnd) return null;
 
-    const top = ((visibleStart - gridStart) / 60) * HOUR_HEIGHT;
-    const height = Math.max(((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT - 5, 34);
-    const compact = height < 54;
+    const top = ((visibleStart - gridStart) / 60) * hourHeight;
+    const height = Math.max(((visibleEnd - visibleStart) / 60) * hourHeight - 5, 34);
+    const compact = height < 75;
     const prioritizeTitle = compact && course.subject.length > 18;
 
     return (
         <button
             type="button"
             className={`timetable-course${course.isCancelled ? " cancelled" : ""}${course.isModified ? " modified" : ""}${compact ? " compact" : ""}${prioritizeTitle ? " title-priority" : ""}${course.devoirAFaire ? " has-homework" : ""}`}
-            style={{ top, height, "--course-color": course.color }}
+            style={{ top, height, left: `calc(${layout.column * 100 / layout.count}% + 4px)`, width: `calc(${100 / layout.count}% - 8px)`, "--course-color": course.color }}
             onClick={() => onSelect(course)}
-            aria-label={`${course.subject}, de ${format(course.start, "HH:mm")} à ${format(course.end, "HH:mm")}, ${course.status}${course.devoirAFaire ? ", devoir à faire" : ""}`}
+            aria-label={`${course.subject}, de ${format(course.start, "HH:mm")} à ${format(course.end, "HH:mm")}, ${course.status}${course.devoirAFaire ? course.homeworkInterrogation ? ", interrogation" : course.homeworkDone ? ", devoir fait" : ", devoir à faire" : ""}`}
         >
             <span className="course-accent" aria-hidden="true" />
-            {course.devoirAFaire && <span className="course-homework-alert" aria-hidden="true">✎</span>}
+            {course.devoirAFaire && <span className={`course-homework-alert${course.homeworkInterrogation ? " interrogation" : course.homeworkDone ? " done" : ""}`} aria-hidden="true">✎</span>}
             <span className="course-title">{course.subject}</span>
             <span className="course-time">{format(course.start, "HH:mm")}–{format(course.end, "HH:mm")}</span>
             {!compact && <span className="course-meta">{course.room} · {isStreamerModeEnabled ? anonymizeTeacher(course.teacher) : course.teacher}</span>}
@@ -342,6 +373,11 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
         viewMode === "three-day" ? currentDayStart : currentWeekStart
     ));
     const [showCancelled, setShowCancelled] = useState(true);
+    const [showSaturday, setShowSaturday] = useState(() => localStorage.getItem("edp-timetable-saturday") !== "false");
+    const [showSunday, setShowSunday] = useState(() => localStorage.getItem("edp-timetable-sunday") === "true");
+    const [printOptionsOpen, setPrintOptionsOpen] = useState(false);
+    const [printHomework, setPrintHomework] = useState(false);
+    const [printCancelled, setPrintCancelled] = useState(true);
     const [courses, setCourses] = useState([]);
     const [selectedCourse, setSelectedCourse] = useState(null);
     const [coursework, setCoursework] = useState(IDLE_COURSEWORK);
@@ -370,8 +406,8 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
     const visibleDays = useMemo(
         () => viewMode === "three-day"
             ? Array.from({ length: THREE_DAY_WINDOW }, (_, index) => addDays(periodStart, index))
-            : selectorDays,
-        [periodStart, selectorDays, viewMode],
+            : selectorDays.filter((day) => (day.getDay() !== 6 || showSaturday) && (day.getDay() !== 0 || showSunday)),
+        [periodStart, selectorDays, showSaturday, showSunday, viewMode],
     );
     const fetchStart = useMemo(() => startOfWeek(periodStart, { weekStartsOn: 1 }), [periodStart]);
     const fetchEnd = useMemo(() => (
@@ -423,6 +459,11 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
     useEffect(() => {
         localStorage.setItem("edp-timetable-view", viewMode);
     }, [viewMode]);
+
+    useEffect(() => {
+        localStorage.setItem("edp-timetable-saturday", String(showSaturday));
+        localStorage.setItem("edp-timetable-sunday", String(showSunday));
+    }, [showSaturday, showSunday]);
 
     useEffect(() => {
         // if (!isLoggedIn || typeof fetchTimetableRef.current !== "function") {
@@ -507,6 +548,11 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
         setRefreshRequest((value) => value + 1);
     };
 
+    const printTimetable = () => {
+        setPrintOptionsOpen(false);
+        window.setTimeout(() => window.print(), 350);
+    };
+
     const openCourse = (course, force = false) => {
         courseworkController.current?.abort();
         const requestId = courseworkRequestId.current + 1;
@@ -585,7 +631,7 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
                                             <button type="button" className="timetable-icon-button" onClick={() => changePeriod(-1)} aria-label={viewMode === "three-day" ? "3 jours précédents" : "Semaine précédente"}>‹</button>
                                             <div className="week-title">
                                                 <span>{viewMode === "three-day" ? "Période de 3 jours" : `Semaine ${format(periodStart, "w")}`}</span>
-                                                <strong>{formatPeriodRange(periodStart, periodLength)}</strong>
+                                                <strong>{formatPeriodRange(periodStart, viewMode === "week" ? showSunday ? 7 : showSaturday ? 6 : 5 : periodLength)}</strong>
                                             </div>
                                             <button type="button" className="timetable-icon-button" onClick={() => changePeriod(1)} aria-label={viewMode === "three-day" ? "3 jours suivants" : "Semaine suivante"}>›</button>
                                             <button type="button" className="timetable-action-button" onClick={goToToday} disabled={visibleDays.some((day) => isSameDay(day, today))}>Aujourd'hui</button>
@@ -624,9 +670,13 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
                                                 <span aria-hidden="true" />
                                                 <span className="cancelled-toggle-label">Cours annulés</span>
                                             </label>
+                                            {viewMode === "week" && <div className="timetable-weekend-settings" aria-label="Jours du week-end">
+                                                <label><input type="checkbox" checked={showSaturday} onChange={(event) => setShowSaturday(event.target.checked)} /> Samedi</label>
+                                                <label><input type="checkbox" checked={showSunday} onChange={(event) => setShowSunday(event.target.checked)} /> Dimanche</label>
+                                            </div>}
                                             <div className="timetable-output-actions">
                                                 <button type="button" onClick={() => exportCalendar(displayedCourses, periodStart)}>Exporter .ics</button>
-                                                <button type="button" onClick={() => window.print()}>Imprimer</button>
+                                                <button type="button" onClick={() => setPrintOptionsOpen(true)}>Imprimer</button>
                                                 <button type="button" className="timetable-action-button" onClick={refresh} disabled={refreshing}>{refreshing ? "Actualisation…" : "Actualiser"}</button>
                                             </div>
                                         </div>
@@ -667,7 +717,7 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
                                     )}
 
                                     {!loading && !error && (
-                                        <div className={`timetable-grid-frame ${viewMode}`}>
+                                        <div className={`timetable-grid-frame ${viewMode}${printHomework ? " print-homework" : ""}${printCancelled ? "" : " print-hide-cancelled"}`}>
                                             <div className="timetable-grid-canvas" style={{ "--visible-days": visibleDays.length }}>
                                                 <div className="timetable-days-header">
                                                     <div className="time-header" aria-hidden="true">Heure</div>
@@ -690,11 +740,12 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
                                                         ))}
                                                         {visibleDays.map((day) => {
                                                             const dayCourses = displayedCourses.filter((course) => isSameDay(course.start, day));
+                                                            const dayLayout = layoutDayCourses(dayCourses);
                                                             const nowMinutes = minutesSinceMidnight(now);
                                                             const showNow = isSameDay(day, now) && nowMinutes >= gridRange.start && nowMinutes <= gridRange.end;
                                                             return (
                                                                 <div className={`day-column${isSameDay(day, today) ? " today" : ""}`} key={dateKey(day)}>
-                                                                    {dayCourses.map((course) => <CourseCard course={course} gridStart={gridRange.start} gridEnd={gridRange.end} onSelect={openCourse} key={course.id} isStreamerModeEnabled={settings.get("isStreamerModeEnabled")} />)}
+                                                                    {dayCourses.map((course) => <CourseCard course={course} gridStart={gridRange.start} gridEnd={gridRange.end} onSelect={openCourse} key={course.id} layout={dayLayout.get(course.id)} isStreamerModeEnabled={settings.get("isStreamerModeEnabled")} />)}
                                                                     {showNow && (
                                                                         <span className="current-time-line" style={{ top: ((nowMinutes - gridRange.start) / 60) * HOUR_HEIGHT }} aria-label={`Heure actuelle : ${format(now, "HH:mm")}`}>
                                                                             <i aria-hidden="true" />
@@ -715,6 +766,17 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
                     </WindowsLayout>
                 </WindowsContainer>
             </div>
+
+            {printOptionsOpen && <PopUp className="timetable-print-popup" onClose={() => setPrintOptionsOpen(false)}>
+                <h2>Imprimer l'emploi du temps</h2>
+                <p>La vue actuellement affichée sera imprimée.</p>
+                <label><input type="checkbox" checked={printHomework} onChange={(event) => setPrintHomework(event.target.checked)} /> Afficher les crayons des devoirs</label>
+                <label><input type="checkbox" checked={printCancelled && showCancelled} disabled={!showCancelled} onChange={(event) => setPrintCancelled(event.target.checked)} /> Afficher les cours annulés{!showCancelled ? " (masqués dans la vue)" : ""}</label>
+                <div className="timetable-print-actions">
+                    <button type="button" onClick={() => setPrintOptionsOpen(false)}>Annuler</button>
+                    <button type="button" onClick={printTimetable}>Imprimer</button>
+                </div>
+            </PopUp>}
 
             {selectedCourse && (
                 <BottomSheet heading={selectedCourse.subject} onClose={closeCourse} firstResizingBreakpoint={1}>
@@ -744,4 +806,77 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
             )}
         </>
     );
+}
+
+export function DashboardTimetable({ activeAccount, fetchTimetable, onOpen, isStreamerModeEnabled }) {
+    const fetchTimetableRef = useRef(fetchTimetable);
+    const [now, setNow] = useState(new Date());
+    const [selectedDay, setSelectedDay] = useState(null);
+    const [courses, setCourses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const today = startOfDay(now);
+    const tomorrow = addDays(today, 1);
+
+    useEffect(() => { fetchTimetableRef.current = fetchTimetable; }, [fetchTimetable]);
+
+    useEffect(() => {
+        const interval = window.setInterval(() => setNow(new Date()), 60_000);
+        return () => window.clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        setLoading(true);
+        setError("");
+        fetchTimetableRef.current({ startDate: today, endDate: tomorrow, controller })
+            .then((rawCourses) => {
+                if (controller.signal.aborted) return;
+                setCourses((rawCourses ?? []).map(normalizeCourse).filter(Boolean));
+            })
+            .catch((fetchError) => {
+                if (!controller.signal.aborted) setError(fetchError?.message || "Impossible de charger l'emploi du temps.");
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+        return () => controller.abort();
+    }, [activeAccount, dateKey(today)]);
+
+    const todayCourses = courses.filter((course) => isSameDay(course.start, today) && !course.isCancelled);
+    const autoDay = todayCourses.every((course) => course.end <= now) ? tomorrow : today;
+    const day = selectedDay && (isSameDay(selectedDay, today) || isSameDay(selectedDay, tomorrow)) ? selectedDay : autoDay;
+    const dayCourses = courses.filter((course) => isSameDay(course.start, day)).sort((a, b) => a.start - b.start);
+    const range = getGridRange(dayCourses);
+    const hourHeight = 50;
+    const height = ((range.end - range.start) / 60) * hourHeight;
+    const layout = layoutDayCourses(dayCourses);
+    const nowMinutes = minutesSinceMidnight(now);
+    const showNow = isSameDay(day, today) && nowMinutes >= range.start && nowMinutes <= range.end
+        && todayCourses.some((course) => course.end > now);
+
+    return <div className="dashboard-timetable-preview">
+        <div className="dashboard-timetable-controls">
+            <div className="dashboard-timetable-days" role="group" aria-label="Jour de l'aperçu">
+                <button type="button" className={isSameDay(day, today) ? "selected" : ""} onClick={() => setSelectedDay(today)}>Aujourd'hui</button>
+                <button type="button" className={isSameDay(day, tomorrow) ? "selected" : ""} onClick={() => setSelectedDay(tomorrow)}>Demain</button>
+            </div>
+            <button type="button" className="dashboard-timetable-open" onClick={onOpen}>Ouvrir l'EDT ›</button>
+        </div>
+        <strong className="dashboard-timetable-date">{format(day, "EEEE d MMMM", { locale: fr })}</strong>
+        {loading ? <p className="dashboard-timetable-message">Chargement des cours…</p>
+            : error ? <p className="dashboard-timetable-message" role="alert">{error}</p>
+                : dayCourses.length === 0 ? <p className="dashboard-timetable-message">Aucun cours prévu.</p>
+                    : <div className="dashboard-timetable-scroll">
+                        <div className="dashboard-timetable-axis" style={{ height }}>
+                            {Array.from({ length: Math.floor((range.end - range.start) / 60) + 1 }, (_, index) => range.start + index * 60)
+                                .filter((minutes) => minutes > range.start && minutes < range.end)
+                                .map((minutes) => <span key={minutes} style={{ top: ((minutes - range.start) / 60) * hourHeight }}>{formatMinutes(minutes)}</span>)}
+                        </div>
+                        <div className="dashboard-timetable-column day-column" style={{ height }}>
+                            {dayCourses.map((course) => <CourseCard key={course.id} course={course} gridStart={range.start} gridEnd={range.end} hourHeight={hourHeight} layout={layout.get(course.id)} onSelect={onOpen} isStreamerModeEnabled={isStreamerModeEnabled} />)}
+                            {showNow && <span className="current-time-line" style={{ top: ((nowMinutes - range.start) / 60) * hourHeight }} aria-label={`Heure actuelle : ${format(now, "HH:mm")}`}><i aria-hidden="true" /></span>}
+                        </div>
+                    </div>}
+    </div>;
 }

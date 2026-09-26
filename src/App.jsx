@@ -70,7 +70,7 @@ function consoleLogEDPLogo() {
 
 consoleLogEDPLogo();
 
-const currentEDPVersion = "0.5.0";
+const currentEDPVersion = "0.5.1";
 const apiVersion = "4.69.1";
 
 // secret webhooks
@@ -173,7 +173,8 @@ function enrichTimetableWithHomework(courses, homeworkByDate) {
         const courseDate = String(course.start_date ?? "").slice(0, 10);
         const matchingHomework = (homeworkByDate?.[courseDate] ?? [])
             .filter((homework) => homeworkMatchesCourse(homework, course));
-        const assignedHomework = matchingHomework.filter((homework) => apiBoolean(homework.aFaire));
+        const assignedHomework = matchingHomework.filter((homework) =>
+            apiBoolean(homework.aFaire) || apiBoolean(homework.interrogation));
 
         return {
             ...course,
@@ -181,6 +182,7 @@ function enrichTimetableWithHomework(courses, homeworkByDate) {
             homeworkSummary: assignedHomework,
             homeworkDone: assignedHomework.length > 0
                 && assignedHomework.every((homework) => apiBoolean(homework.effectue)),
+            homeworkInterrogation: assignedHomework.some((homework) => apiBoolean(homework.interrogation)),
         };
     });
 }
@@ -2977,7 +2979,7 @@ export default function App({ edpFetch }) {
                             path: "dashboard",
                         },
                         {
-                            element: <Dashboard fetchUserGrades={fetchUserGrades} grades={grades} fetchHomeworks={fetchHomeworks} activeAccount={activeAccount} isLoggedIn={isLoggedIn} useUserData={useUserData} sortGrades={sortGrades} isTabletLayout={isTabletLayout} />,
+                            element: <Dashboard fetchUserGrades={fetchUserGrades} grades={grades} fetchHomeworks={fetchHomeworks} fetchTimetable={fetchTimetable} activeAccount={activeAccount} isLoggedIn={isLoggedIn} useUserData={useUserData} sortGrades={sortGrades} isTabletLayout={isTabletLayout} />,
                             path: ":userId/dashboard"
                         },
                         {

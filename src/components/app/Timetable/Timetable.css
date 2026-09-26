@@ -712,6 +712,78 @@
     transform: translateY(-50%);
 }
 
+.course-homework-alert.done {
+    border-color: #a7efbf;
+    background: #176a3b;
+}
+
+.course-homework-alert.interrogation {
+    border-color: #ffb3b3;
+    background: #b52b36;
+}
+
+.timetable-grid-frame.week .timetable-course.compact .course-title {
+    display: -webkit-box;
+    padding-right: 2px;
+    white-space: normal;
+    text-overflow: clip;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.timetable-grid-frame.week .timetable-course.compact.has-homework .course-title {
+    padding-right: 23px;
+}
+
+.timetable-grid-frame.week .timetable-course.compact .course-time {
+    display: none;
+}
+
+.timetable-weekend-settings {
+    display: flex;
+    gap: 7px;
+    color: rgb(var(--text-color-alt));
+    font-size: var(--font-size-12);
+}
+
+.timetable-weekend-settings label {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.timetable-print-popup #pop-up-background {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: min(420px, calc(100vw - 32px));
+    padding: 28px;
+    color: rgb(var(--text-color-main));
+}
+
+.timetable-print-popup label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.timetable-print-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.timetable-print-actions button {
+    padding: 8px 14px;
+    border: 1px solid rgba(var(--border-color-contrast), .5);
+    border-radius: 8px;
+    background: rgb(var(--background-color-1));
+    color: rgb(var(--text-color-main));
+    cursor: pointer;
+}
+
 .current-time-line {
     height: 2px;
     position: absolute;
@@ -1159,6 +1231,14 @@
 }
 
 @media print {
+    #timetable-page .course-homework-alert,
+    #timetable-page .print-hide-cancelled .timetable-course.cancelled {
+        display: none !important;
+    }
+
+    #timetable-page .print-homework .course-homework-alert {
+        display: grid !important;
+    }
     .header-container,
     #timetable-page .window-header,
     .timetable-toolbar,
