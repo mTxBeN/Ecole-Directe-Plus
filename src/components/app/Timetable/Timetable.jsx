@@ -905,8 +905,7 @@ export function DashboardTimetable({ activeAccount, fetchTimetable, onOpen, isSt
         </div>
         {loading ? <p className="dashboard-timetable-message">Chargement des cours…</p>
             : error ? <p className="dashboard-timetable-message" role="alert">{error}</p>
-                : dayCourses.length === 0 ? <p className="dashboard-timetable-message">Aucun cours prévu.</p>
-                    : <div className="dashboard-timetable-scroll" ref={previewGridRef}>
+                : <div className="dashboard-timetable-scroll" ref={previewGridRef}>
                         <div className="dashboard-timetable-axis" style={{ height }}>
                             {Array.from({ length: Math.floor((range.end - range.start) / 60) + 1 }, (_, index) => range.start + index * 60)
                                 .filter((minutes) => minutes > range.start && minutes < range.end)
