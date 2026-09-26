@@ -888,7 +888,7 @@ export function DashboardTimetable({ activeAccount, fetchTimetable, onOpen, isSt
     const day = selectedDay && (isSameDay(selectedDay, today) || isSameDay(selectedDay, tomorrow)) ? selectedDay : autoDay;
     const dayCourses = courses.filter((course) => isSameDay(course.start, day)).sort((a, b) => a.start - b.start);
     const range = getGridRange(dayCourses);
-    const hourHeight = Math.max(50, previewHeight / ((range.end - range.start) / 60));
+    const hourHeight = (previewHeight || 500) / ((range.end - range.start) / 60);
     const height = ((range.end - range.start) / 60) * hourHeight;
     const layout = layoutDayCourses(dayCourses);
     const nowMinutes = minutesSinceMidnight(now);
