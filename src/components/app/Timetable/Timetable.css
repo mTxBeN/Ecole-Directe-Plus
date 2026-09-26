@@ -775,10 +775,19 @@
     color: rgb(var(--text-color-main));
 }
 
-.timetable-print-popup label {
+.timetable-print-popup .check-box {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: flex-start;
+    gap: 12px;
+}
+
+.timetable-print-popup .check-box input {
+    flex: none;
+}
+
+.timetable-print-popup .check-box .text-label {
+    flex: 0 1 auto;
 }
 
 .timetable-print-actions {

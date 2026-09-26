@@ -25,6 +25,7 @@ import EncodedHTMLDiv from "../../generic/CustomDivs/EncodedHTMLDiv";
 import FileComponent from "../../generic/FileComponent";
 import InfoButton from "../../generic/Informative/InfoButton";
 import PopUp from "../../generic/PopUps/PopUp";
+import CheckBox from "../../generic/UserInputs/CheckBox";
 
 import "./Timetable.css";
 import { anonymizeTeacher, textToHSL } from "../../../utils/utils";
@@ -796,10 +797,10 @@ export default function Timetable({ isLoggedIn, activeAccount, fetchTimetable, f
             {printOptionsOpen && <PopUp className="timetable-print-popup" onClose={() => setPrintOptionsOpen(false)}>
                 <h2>Imprimer l'emploi du temps</h2>
                 <p>Choisissez ce qui apparaîtra sur la version imprimée.</p>
-                <label><input type="checkbox" checked={printHomework} onChange={(event) => setPrintHomework(event.target.checked)} /> Afficher les crayons des devoirs</label>
-                <label><input type="checkbox" checked={printCancelled} onChange={(event) => setPrintCancelled(event.target.checked)} /> Afficher les cours annulés</label>
-                <label><input type="checkbox" checked={printSaturday} disabled={viewMode === "three-day" && !screenDays.some((day) => day.getDay() === 6)} onChange={(event) => setPrintSaturday(event.target.checked)} /> Samedi</label>
-                <label><input type="checkbox" checked={printSunday} disabled={viewMode === "three-day" && !screenDays.some((day) => day.getDay() === 0)} onChange={(event) => setPrintSunday(event.target.checked)} /> Dimanche</label>
+                <CheckBox id="print-timetable-homework" label="Afficher les crayons des devoirs" checked={printHomework} onChange={(event) => setPrintHomework(event.target.checked)} />
+                <CheckBox id="print-timetable-cancelled" label="Afficher les cours annulés" checked={printCancelled} onChange={(event) => setPrintCancelled(event.target.checked)} />
+                <CheckBox id="print-timetable-saturday" label="Samedi" checked={printSaturday} disabled={viewMode === "three-day" && !screenDays.some((day) => day.getDay() === 6)} onChange={(event) => setPrintSaturday(event.target.checked)} />
+                <CheckBox id="print-timetable-sunday" label="Dimanche" checked={printSunday} disabled={viewMode === "three-day" && !screenDays.some((day) => day.getDay() === 0)} onChange={(event) => setPrintSunday(event.target.checked)} />
                 <div className="timetable-print-actions">
                     <button type="button" onClick={() => setPrintOptionsOpen(false)}>Annuler</button>
                     <button type="button" onClick={printTimetable}>Imprimer</button>
